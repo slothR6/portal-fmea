@@ -1,0 +1,65 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal de Entregas FMEA | Energia Renovável</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap" rel="stylesheet">
+    <style>
+        @font-face {
+            font-family: 'Futura';
+            src: local('Futura LT BT'), local('Futura'), sans-serif;
+        }
+        :root {
+            --fmea-green: #75AD4D;
+            --fmea-blue: #1895BD;
+            --fmea-gray: #D6DCE5;
+        }
+        body {
+            font-family: 'Lato', sans-serif;
+            font-size: 20px; /* Lato 20 requirement */
+            color: #2D3748;
+            background-color: #F7FAFC;
+        }
+        h1, h2 {
+            font-family: 'Futura', sans-serif;
+            font-size: 40px; /* Futura 40 requirement */
+            line-height: 1.1;
+            font-weight: 800;
+        }
+        h3, h4 {
+            font-family: 'Futura', sans-serif;
+            font-weight: 700;
+        }
+        .bg-fmea-green { background-color: var(--fmea-green); }
+        .text-fmea-green { color: var(--fmea-green); }
+        .bg-fmea-blue { background-color: var(--fmea-blue); }
+        .text-fmea-blue { color: var(--fmea-blue); }
+        .bg-fmea-gray { background-color: var(--fmea-gray); }
+        .border-fmea-blue { border-color: var(--fmea-blue); }
+        
+        /* Custom scrollbar for a clean corporate look */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: var(--fmea-blue); border-radius: 4px; }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="min-h-screen">
+    <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
