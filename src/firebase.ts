@@ -19,7 +19,7 @@ export const googleProvider = new GoogleAuthProvider();
 
 export const db = getFirestore(app);
 
-// Cache offline (IndexedDB)
+// Cache offline (reduz leituras e melhora UX). Pode falhar em aba duplicada.
 enableIndexedDbPersistence(db).catch(() => {
-  // Pode falhar em aba múltipla, modo privado etc
+  // silencioso
 });

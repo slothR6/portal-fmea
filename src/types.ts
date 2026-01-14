@@ -1,29 +1,29 @@
-// src/types.ts
 export type UserRole = "ADMIN" | "PRESTADOR";
+export type UserStatus = "PENDING" | "ACTIVE" | "REJECTED";
 
-export type UserStatus = "PENDING" | "ACTIVE" | "REJECTED" | "DELETED";
+export type Status =
+  | "PENDENTE"
+  | "EM_ANDAMENTO"
+  | "REVISAO"
+  | "AJUSTES"
+  | "APROVADO"
+  | "ATRASADO"
+  | "CONCLUIDO";
 
-export type Status = "PENDENTE" | "REVISAO" | "AJUSTES" | "APROVADO" | "ATRASADO";
 export type Priority = "BAIXA" | "MEDIA" | "ALTA";
 
-export type SafetyDocType = "NR10" | "NR33" | "NR35" | "ASO" | "OUTRO";
-
-export interface SafetyDoc {
-  id: string;
-  uid: string; // uid do prestador
-  type: SafetyDocType;
-  title: string;
-  issueDate?: string; // yyyy-mm-dd
-  expiryDate?: string; // yyyy-mm-dd
-  url?: string; // link externo (Drive, OneDrive etc)
-  notes?: string;
-  createdAt: number;
-  updatedAt?: number;
-}
-export interface Delivery {
-  // ...
-  managerUid?: string;
-}
+export type ViewState =
+  | "LOGIN"
+  | "SIGNUP"
+  | "PENDING"
+  | "DASHBOARD"
+  | "ENTREGAS"
+  | "PROJETOS"
+  | "DETALHE_ENTREGA"
+  | "DETALHE_PROJETO"
+  | "USUARIOS"
+  | "PRESTADORES"
+  | "PERFIL";
 
 export interface UserProfile {
   uid: string;
@@ -32,16 +32,10 @@ export interface UserProfile {
   role: UserRole;
   status: UserStatus;
   active: boolean;
-
   pixKey?: string;
-
-  photoUrl?: string; // url externa ou photoURL do Google
-  phone?: string;
-
+  photoURL?: string;
   createdAt: number;
-  updatedAt?: number;
-
-  deletedAt?: number;
+  approvedAt?: number;
 }
 
 export interface Project {
@@ -49,37 +43,17 @@ export interface Project {
   client: string;
   name: string;
 
+  description?: string;
+  externalLink?: string;
+
   manager: string;
   managerUid: string;
-
-  memberUids: string[]; // prestadores vinculados ao projeto
-
+  memberUids: string[];
   status: Status;
   completionRate: number;
 
   createdAt: number;
   updatedAt?: number;
-}
-
-export interface ChecklistItem {
-  id: string;
-  text: string;
-  done: boolean;
-}
-
-export interface Attachment {
-  id: string;
-  name: string;
-  url: string;
-  createdAt: number;
-}
-
-export interface Comment {
-  id: string;
-  uid: string;
-  author: string;
-  message: string;
-  createdAt: number;
 }
 
 export interface Delivery {
@@ -90,9 +64,9 @@ export interface Delivery {
   project: string;
 
   title: string;
-  description?: string;
+  description: string;
 
-  deadline?: string; // yyyy-mm-dd
+  deadline: string;
 
   status: Status;
   priority: Priority;
@@ -100,32 +74,28 @@ export interface Delivery {
   provider: string;
   providerUid: string;
 
-  checklist: ChecklistItem[];
-  attachments: Attachment[];
-  comments: Comment[];
+  externalLink?: string;
 
   createdAt: number;
   updatedAt?: number;
 }
 
-export interface AppNotification {
+export interface SafetyDoc {
   id: string;
-  uid: string;
+  uid: string; // uid do prestador
   title: string;
-  message: string;
+  issuedAt: string;
+  expiresAt?: string;
+  externalLink?: string; // link de drive (sem storage no plano free)
+  notes?: string;
   createdAt: number;
-  read: boolean;
 }
 
-export type ViewState =
-  | "LOGIN"
-  | "SIGNUP"
-  | "PENDING"
-  | "DASHBOARD"
-  | "USUARIOS"
-  | "PRESTADORES"
-  | "PROJETOS"
-  | "ENTREGAS"
-  | "DETALHE_PROJETO"
-  | "DETALHE_ENTREGA"
-  | "MEU_PERFIL";
+export function isValidUrl(v: string): boolean {
+  try {
+    const u = new URL(v);
+    return !!u.protocol && !!u.host;
+  } catch {
+    return false;
+  }
+}

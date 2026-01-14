@@ -1,8 +1,9 @@
-// src/services/portal.ts
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
+  getDoc,
   getDocs,
   orderBy,
   query,
@@ -11,143 +12,132 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { Delivery, Project, Status } from "../types";
+import { Delivery, Project, SafetyDoc, UserProfile, UserRole, UserStatus } from "../types";
 
-function toMillis(v: any): number {
-  if (!v) return Date.now();
-  if (typeof v === "number") return v;
-  if (typeof v?.toMillis === "function") return v.toMillis();
-  const d = new Date(v);
-  const t = d.getTime();
-  return Number.isFinite(t) ? t : Date.now();
+type FireUserDoc = {
+  uid: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  status: UserStatus;
+  active: boolean;
+  pixKey?: string;
+  photoURL?: string;
+  createdAt?: any;
+  approvedAt?: any;
+};
+
+export async function getUserProfile(uid: string): Promise<UserProfile | null> {
+  const ref = doc(db, "users", uid);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+
+  const d = snap.data() as FireUserDoc;
+  return {
+    uid: d.uid || uid,
+    email: d.email || "",
+    name: d.name || "Usuário",
+    role: d.role || "PRESTADOR",
+    status: d.status || "PENDING",
+    active: !!d.active,
+    pixKey: d.pixKey,
+    photoURL: d.photoURL,
+    createdAt: typeof d.createdAt === "number" ? d.createdAt : Date.now(),
+    approvedAt: typeof d.approvedAt === "number" ? d.approvedAt : undefined,
+  };
 }
 
-export async function listProjectsAdmin(): Promise<Project[]> {
-  const q = query(collection(db, "projects"), orderBy("createdAt", "desc"));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => {
-    const data: any = d.data();
+export async function listProjects(): Promise<Project[]> {
+  const qy = query(collection(db, "projects"), orderBy("createdAt", "desc"));
+  const snap = await getDocs(qy);
+
+  return snap.docs.map((s) => {
+    const d = s.data() as any;
     return {
-      id: d.id,
-      client: data.client || "",
-      name: data.name || "",
-      manager: data.manager || "",
-      managerUid: data.managerUid || "",
-      memberUids: Array.isArray(data.memberUids) ? data.memberUids : [],
-      status: data.status || "PENDENTE",
-      completionRate: typeof data.completionRate === "number" ? data.completionRate : 0,
-      createdAt: toMillis(data.createdAt),
-      updatedAt: data.updatedAt ? toMillis(data.updatedAt) : undefined,
-    } satisfies Project;
+      id: s.id,
+      client: d.client || "",
+      name: d.name || "",
+      description: d.description || "",
+      externalLink: d.externalLink || "",
+      manager: d.manager || "",
+      managerUid: d.managerUid || "",
+      memberUids: Array.isArray(d.memberUids) ? d.memberUids : [],
+      status: d.status || "PENDENTE",
+      completionRate: typeof d.completionRate === "number" ? d.completionRate : 0,
+      createdAt: typeof d.createdAt === "number" ? d.createdAt : Date.now(),
+      updatedAt: typeof d.updatedAt === "number" ? d.updatedAt : undefined,
+    } as Project;
   });
 }
 
-export async function listProjectsForUser(uid: string): Promise<Project[]> {
-  const q = query(
-    collection(db, "projects"),
-    where("memberUids", "array-contains", uid),
-    orderBy("createdAt", "desc")
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => {
-    const data: any = d.data();
+export async function listDeliveries(): Promise<Delivery[]> {
+  const qy = query(collection(db, "deliveries"), orderBy("createdAt", "desc"));
+  const snap = await getDocs(qy);
+
+  return snap.docs.map((s) => {
+    const d = s.data() as any;
     return {
-      id: d.id,
-      client: data.client || "",
-      name: data.name || "",
-      manager: data.manager || "",
-      managerUid: data.managerUid || "",
-      memberUids: Array.isArray(data.memberUids) ? data.memberUids : [],
-      status: data.status || "PENDENTE",
-      completionRate: typeof data.completionRate === "number" ? data.completionRate : 0,
-      createdAt: toMillis(data.createdAt),
-      updatedAt: data.updatedAt ? toMillis(data.updatedAt) : undefined,
-    } satisfies Project;
+      id: s.id,
+      projectId: d.projectId || "",
+      client: d.client || "",
+      project: d.project || "",
+      title: d.title || "",
+      description: d.description || "",
+      deadline: d.deadline || "",
+      status: d.status || "PENDENTE",
+      priority: d.priority || "MEDIA",
+      provider: d.provider || "",
+      providerUid: d.providerUid || "",
+      externalLink: d.externalLink || "",
+      createdAt: typeof d.createdAt === "number" ? d.createdAt : Date.now(),
+      updatedAt: typeof d.updatedAt === "number" ? d.updatedAt : undefined,
+    } as Delivery;
   });
 }
 
-export async function createProject(payload: Omit<Project, "id" | "createdAt" | "updatedAt">): Promise<void> {
-  await addDoc(collection(db, "projects"), {
-    ...payload,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+export async function addSafetyDoc(docData: Omit<SafetyDoc, "id">): Promise<string> {
+  const ref = await addDoc(collection(db, "safetyDocs"), {
+    ...docData,
+    createdAt: docData.createdAt || Date.now(),
+    createdAtServer: serverTimestamp(),
   });
+  return ref.id;
 }
 
-export async function updateProject(projectId: string, patch: Partial<Project>): Promise<void> {
-  await updateDoc(doc(db, "projects", projectId), {
+export async function deleteSafetyDoc(id: string): Promise<void> {
+  await deleteDoc(doc(db, "safetyDocs", id));
+}
+
+export async function deleteUserProfile(uid: string): Promise<void> {
+  await deleteDoc(doc(db, "users", uid));
+}
+
+export async function updateUserProfile(uid: string, patch: Partial<UserProfile>): Promise<void> {
+  await updateDoc(doc(db, "users", uid), {
     ...patch,
-    updatedAt: serverTimestamp(),
+    updatedAt: Date.now(),
   } as any);
 }
 
-export async function listDeliveriesAdmin(): Promise<Delivery[]> {
-  const q = query(collection(db, "deliveries"), orderBy("createdAt", "desc"));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => {
-    const data: any = d.data();
-    return {
-      id: d.id,
-      projectId: data.projectId || "",
-      client: data.client || "",
-      project: data.project || "",
-      title: data.title || "",
-      description: data.description || "",
-      deadline: data.deadline || "",
-      status: data.status || "PENDENTE",
-      priority: data.priority || "MEDIA",
-      provider: data.provider || "",
-      providerUid: data.providerUid || "",
-      checklist: Array.isArray(data.checklist) ? data.checklist : [],
-      attachments: Array.isArray(data.attachments) ? data.attachments : [],
-      comments: Array.isArray(data.comments) ? data.comments : [],
-      createdAt: toMillis(data.createdAt),
-      updatedAt: data.updatedAt ? toMillis(data.updatedAt) : undefined,
-    } satisfies Delivery;
-  });
-}
-
-export async function listDeliveriesForProvider(providerUid: string): Promise<Delivery[]> {
-  const q = query(
-    collection(db, "deliveries"),
-    where("providerUid", "==", providerUid),
+export async function listSafetyDocsForProvider(uid: string): Promise<SafetyDoc[]> {
+  const qy = query(
+    collection(db, "safetyDocs"),
+    where("uid", "==", uid),
     orderBy("createdAt", "desc")
   );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => {
-    const data: any = d.data();
+  const snap = await getDocs(qy);
+
+  return snap.docs.map((s) => {
+    const d = s.data() as any;
     return {
-      id: d.id,
-      projectId: data.projectId || "",
-      client: data.client || "",
-      project: data.project || "",
-      title: data.title || "",
-      description: data.description || "",
-      deadline: data.deadline || "",
-      status: data.status || "PENDENTE",
-      priority: data.priority || "MEDIA",
-      provider: data.provider || "",
-      providerUid: data.providerUid || "",
-      checklist: Array.isArray(data.checklist) ? data.checklist : [],
-      attachments: Array.isArray(data.attachments) ? data.attachments : [],
-      comments: Array.isArray(data.comments) ? data.comments : [],
-      createdAt: toMillis(data.createdAt),
-      updatedAt: data.updatedAt ? toMillis(data.updatedAt) : undefined,
-    } satisfies Delivery;
-  });
-}
-
-export async function createDelivery(payload: Omit<Delivery, "id" | "createdAt" | "updatedAt">): Promise<void> {
-  await addDoc(collection(db, "deliveries"), {
-    ...payload,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-}
-
-export async function updateDeliveryStatus(deliveryId: string, status: Status): Promise<void> {
-  await updateDoc(doc(db, "deliveries", deliveryId), {
-    status,
-    updatedAt: serverTimestamp(),
+      id: s.id,
+      uid: d.uid,
+      title: d.title || "",
+      issuedAt: d.issuedAt || "",
+      expiresAt: d.expiresAt || "",
+      externalLink: d.externalLink || "",
+      notes: d.notes || "",
+      createdAt: typeof d.createdAt === "number" ? d.createdAt : Date.now(),
+    } as SafetyDoc;
   });
 }
