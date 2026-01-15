@@ -1,6 +1,9 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import {
+  getFirestore,
+  enableIndexedDbPersistence,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCXetuiLkPa02LZYTYfOqmpFo4rsiUZIAQ",
@@ -19,7 +22,7 @@ export const googleProvider = new GoogleAuthProvider();
 
 export const db = getFirestore(app);
 
-// Cache offline (reduz leituras e melhora UX). Pode falhar em aba duplicada.
+// Cache offline (IndexedDB)
 enableIndexedDbPersistence(db).catch(() => {
-  // silencioso
+  // Se der erro (multi-aba, etc.), só ignora.
 });
