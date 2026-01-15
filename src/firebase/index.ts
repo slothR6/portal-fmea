@@ -22,7 +22,18 @@ export const googleProvider = new GoogleAuthProvider();
 
 export const db = getFirestore(app);
 
-// Cache offline (IndexedDB)
-enableIndexedDbPersistence(db).catch(() => {
-  // Se der erro (multi-aba, etc.), só ignora.
-});
+// Cache offline (IndexedDB) com tratamento de erro melhorado
+if (typeof window !== "undefined") {
+  enableIndexedDbPersistence(db, {
+    forceOwnership: false, // Permite múltiplas abas
+  }).catch((err) => {
+    if (err.code === "failed-precondition") {
+      console.warn("Persistence failed: Multiple tabs open. Only one tab can enable persistence.");
+    } else if (err.code === "unimplemented") {
+      console.warn("Persistence not available in this browser.");
+    } else {
+      console.warn("Persistence error:", err);
+    }
+    // App continua funcionando mesmo sem persistence
+  });
+}

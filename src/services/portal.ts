@@ -38,7 +38,6 @@ export async function rejectUser(uid: string) {
   });
 }
 
-// Soft delete (não dá para apagar do Auth pelo front)
 export async function softDeleteUser(uid: string) {
   await updateDoc(doc(db, "users", uid), {
     status: "DELETED",
@@ -60,9 +59,7 @@ export async function updateProject(projectId: string, patch: Partial<Project>) 
 }
 
 export async function deleteProject(projectId: string) {
-  // Deleta o projeto e todas as entregas desse projeto (batch)
   const batch = writeBatch(db);
-
   batch.delete(doc(db, "projects", projectId));
 
   const qDel = query(
@@ -90,11 +87,7 @@ export async function updateDelivery(deliveryId: string, patch: Partial<Delivery
 }
 
 export async function deleteDelivery(deliveryId: string) {
-  // deleta doc principal
   await deleteDoc(doc(db, "deliveries", deliveryId));
-
-  // (opcional) se você estiver usando subcollections (comments/attachments),
-  // isso precisaria de Function/Admin SDK. No MVP, tudo no doc principal.
 }
 
 // ---------- PROVIDER SAFETY DOCS ----------
@@ -109,18 +102,23 @@ export async function deleteProviderSafetyDoc(providerUid: string, docId: string
   await deleteDoc(doc(db, "providers", providerUid, "safetyDocs", docId));
 }
 
-// ---------- HELPERS ----------
+// ---------- QUERY HELPERS ----------
 export function getBaseUsersQuery(isAdmin: boolean) {
   if (isAdmin) {
+    // Admin: busca TODOS os usuários e filtra DELETED no client-side
+    // Evita precisar de índice composto adicional
     return query(
       collection(db, "users"),
       orderBy("createdAt", "desc"),
-      limit(PAGE_SIZE * 50)
+      limit(PAGE_SIZE * 100)
     );
   }
+  
+  // Prestador: apenas ativos, ordenado por data
   return query(
     collection(db, "users"),
     where("status", "==", "ACTIVE"),
+    where("active", "==", true),
     orderBy("createdAt", "desc"),
     limit(PAGE_SIZE * 50)
   );
@@ -128,12 +126,15 @@ export function getBaseUsersQuery(isAdmin: boolean) {
 
 export function getBaseProjectsQuery(isAdmin: boolean, uid: string) {
   if (isAdmin) {
+    // Admin: todos projetos, ordenado por data
     return query(
       collection(db, "projects"),
       orderBy("createdAt", "desc"),
       limit(PAGE_SIZE * 50)
     );
   }
+  
+  // Prestador: apenas onde é membro, ordenado por data
   return query(
     collection(db, "projects"),
     where("memberUids", "array-contains", uid),
@@ -144,12 +145,15 @@ export function getBaseProjectsQuery(isAdmin: boolean, uid: string) {
 
 export function getBaseDeliveriesQuery(isAdmin: boolean, uid: string) {
   if (isAdmin) {
+    // Admin: todas entregas, ordenado por data
     return query(
       collection(db, "deliveries"),
       orderBy("createdAt", "desc"),
       limit(PAGE_SIZE * 50)
     );
   }
+  
+  // Prestador: apenas suas entregas, ordenado por data
   return query(
     collection(db, "deliveries"),
     where("providerUid", "==", uid),
@@ -159,6 +163,7 @@ export function getBaseDeliveriesQuery(isAdmin: boolean, uid: string) {
 }
 
 export function getSafetyDocsQuery(providerUid: string) {
+  // Safety docs ordenado por data
   return query(
     collection(db, "providers", providerUid, "safetyDocs"),
     orderBy("createdAt", "desc"),

@@ -19,7 +19,7 @@ import { useToasts } from "./hooks/useToasts";
 import Toasts from "./components/ui/Toasts";
 import Sidebar from "./layout/Sidebar";
 
-import { loginEmail, signupEmail, logout, loginGoogle } from "./services/auth";
+import { loginEmail, signupEmail, logout, loginGoogle, sendPasswordReset } from "./services/auth";
 import {
   approveUser as approveUserSvc,
   rejectUser as rejectUserSvc,
@@ -157,6 +157,11 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Loading states
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [loadingDeliveries, setLoadingDeliveries] = useState(false);
+
   // login/signup fields
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -181,10 +186,11 @@ export default function App() {
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [projectEditModalOpen, setProjectEditModalOpen] = useState(false);
   const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
+  const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
 
   // forms
-  const [projectForm, setProjectForm] = useState({ client: "", name: "", memberUids: [] as string[] });
-  const [projectEditForm, setProjectEditForm] = useState({ id: "", client: "", name: "", memberUids: [] as string[] });
+  const [projectForm, setProjectForm] = useState({ client: "", name: "", description: "", memberUids: [] as string[] });
+  const [projectEditForm, setProjectEditForm] = useState({ id: "", client: "", name: "", description: "", memberUids: [] as string[] });
 
   const [deliveryForm, setDeliveryForm] = useState({
     projectId: "",
@@ -221,15 +227,27 @@ export default function App() {
   useEffect(() => {
     if (!user || !profile || !profile.active) return;
 
+    setLoadingUsers(true);
+    setLoadingProjects(true);
+    setLoadingDeliveries(true);
+
     // Users
     const usersQ = getBaseUsersQuery(profile.role === "ADMIN");
     const unsubUsers = onSnapshot(
       usersQ,
       (snap) => {
-        const arr = snap.docs.map((d) => d.data() as UserProfile).filter((u) => u.status !== "DELETED");
+        // Filtra DELETED no client-side para admin
+        const arr = snap.docs
+          .map((d) => d.data() as UserProfile)
+          .filter((u) => u.status !== "DELETED");
         setUsersList(arr);
+        setLoadingUsers(false);
       },
-      () => push({ type: "error", title: "Erro ao carregar usuários" })
+      (error) => {
+        console.error("Error loading users:", error);
+        push({ type: "error", title: "Erro ao carregar usuários", message: error.message });
+        setLoadingUsers(false);
+      }
     );
 
     // Projects
@@ -237,12 +255,20 @@ export default function App() {
     const unsubProjects = onSnapshot(
       projectsQ,
       (snap) => {
+        console.log("Projects loaded:", snap.size, "docs for user:", user.uid, "role:", profile.role);
         const arr = snap.docs
           .map((d) => ({ ...(d.data() as any), id: d.id } as Project))
           .filter((p) => !p.deletedAt);
+        console.log("Projects after filter:", arr);
         setProjects(arr);
+        setLoadingProjects(false);
       },
-      () => push({ type: "error", title: "Erro ao carregar projetos" })
+      (error) => {
+        console.error("Error loading projects:", error);
+        console.error("User uid:", user.uid, "Role:", profile.role);
+        push({ type: "error", title: "Erro ao carregar projetos", message: error.message });
+        setLoadingProjects(false);
+      }
     );
 
     // Deliveries
@@ -254,8 +280,13 @@ export default function App() {
           .map((d) => ({ ...(d.data() as any), id: d.id } as Delivery))
           .filter((d) => !d.deletedAt);
         setDeliveries(arr);
+        setLoadingDeliveries(false);
       },
-      () => push({ type: "error", title: "Erro ao carregar entregas" })
+      (error) => {
+        console.error("Error loading deliveries:", error);
+        push({ type: "error", title: "Erro ao carregar entregas", message: error.message });
+        setLoadingDeliveries(false);
+      }
     );
 
     // Notifications
@@ -266,7 +297,10 @@ export default function App() {
         const arr = snap.docs.map((d) => ({ ...(d.data() as any), id: d.id } as AppNotification));
         setNotifications(arr);
       },
-      () => push({ type: "error", title: "Erro ao carregar notificações" })
+      (error) => {
+        console.error("Error loading notifications:", error);
+        push({ type: "error", title: "Erro ao carregar notificações", message: error.message });
+      }
     );
 
     return () => {
@@ -281,6 +315,7 @@ export default function App() {
   useEffect(() => {
     if (!selectedProviderUid) {
       setProviderDocs([]);
+      setSafetyDocForm({ title: "", issuedAt: "", expiresAt: "", externalUrl: "", notes: "" });
       return;
     }
     const qDocs = getSafetyDocsQuery(selectedProviderUid);
@@ -290,7 +325,10 @@ export default function App() {
         const arr = snap.docs.map((d) => ({ ...(d.data() as any), id: d.id } as ProviderSafetyDoc));
         setProviderDocs(arr);
       },
-      () => push({ type: "error", title: "Erro ao carregar registros do prestador" })
+      (error) => {
+        console.error("Error loading safety docs:", error);
+        push({ type: "error", title: "Erro ao carregar registros do prestador", message: error.message });
+      }
     );
     return () => unsub();
   }, [selectedProviderUid]);
@@ -321,7 +359,6 @@ export default function App() {
     try {
       await signupEmail({ name: nome, email, password: senha, pixKey });
       push({ type: "success", title: "Conta criada", message: "Aguardando aprovação do admin." });
-      // view será ajustada pelo useAuth (PENDING)
     } catch (e: any) {
       setAuthError(e?.message || "Não foi possível criar conta.");
       push({ type: "error", title: "Falha ao criar conta", message: e?.message || "" });
@@ -357,6 +394,31 @@ export default function App() {
     push({ type: "info", title: "Sessão encerrada" });
   };
 
+  const doResetPassword = async () => {
+    if (!email || !email.trim()) {
+      push({ type: "error", title: "Digite seu email no campo acima" });
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
+
+    try {
+      await sendPasswordReset(email);
+      push({ 
+        type: "success", 
+        title: "Email enviado!", 
+        message: "Verifique sua caixa de entrada e spam." 
+      });
+      setResetPasswordModalOpen(false);
+    } catch (e: any) {
+      setAuthError(e?.message || "Erro ao enviar email de recuperação.");
+      push({ type: "error", title: "Erro", message: e?.message || "" });
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   // ---------- Admin: approve/reject/delete ----------
   const approveUser = async (u: UserProfile, newRole: UserRole) => {
     try {
@@ -388,7 +450,7 @@ export default function App() {
 
   // ---------- Project CRUD ----------
   const openCreateProject = () => {
-    setProjectForm({ client: "", name: "", memberUids: [] });
+    setProjectForm({ client: "", name: "", description: "", memberUids: [] });
     setProjectModalOpen(true);
   };
 
@@ -397,6 +459,7 @@ export default function App() {
 
     const client = sanitize(projectForm.client);
     const name = sanitize(projectForm.name);
+    const description = sanitize(projectForm.description);
 
     if (!client || !name) {
       push({ type: "error", title: "Preencha cliente e nome do projeto" });
@@ -407,6 +470,7 @@ export default function App() {
       await createProject({
         client,
         name,
+        description,
         manager: profile.name,
         managerUid: profile.uid,
         memberUids: projectForm.memberUids,
@@ -427,6 +491,7 @@ export default function App() {
       id: p.id,
       client: p.client,
       name: p.name,
+      description: p.description || "",
       memberUids: p.memberUids || [],
     });
     setProjectEditModalOpen(true);
@@ -437,6 +502,7 @@ export default function App() {
 
     const client = sanitize(projectEditForm.client);
     const name = sanitize(projectEditForm.name);
+    const description = sanitize(projectEditForm.description);
 
     if (!client || !name) {
       push({ type: "error", title: "Preencha cliente e nome do projeto" });
@@ -447,6 +513,7 @@ export default function App() {
       await updateProjectSvc(projectEditForm.id, {
         client,
         name,
+        description,
         memberUids: projectEditForm.memberUids,
       });
       setProjectEditModalOpen(false);
@@ -542,7 +609,7 @@ export default function App() {
     }
   };
 
-  // ---------- Comments (doc principal para MVP) ----------
+  // ---------- Comments ----------
   const [commentText, setCommentText] = useState("");
 
   const addComment = async (deliveryId: string) => {
@@ -551,7 +618,6 @@ export default function App() {
     if (!text) return;
 
     try {
-      // adiciona no array "comments" no doc da entrega
       const d = deliveries.find((x) => x.id === deliveryId);
       if (!d) return;
 
@@ -571,7 +637,6 @@ export default function App() {
       setCommentText("");
       push({ type: "success", title: "Comentário publicado" });
 
-      // notifica admins se prestador comentou
       if (profile.role === "PRESTADOR") {
         const admins = usersList.filter((u) => u.role === "ADMIN" && u.active && u.status === "ACTIVE");
         await Promise.all(
@@ -689,7 +754,6 @@ export default function App() {
         createdByName: profile.name,
       });
       push({ type: "success", title: "Registro adicionado" });
-      // limpa form
       setSafetyDocForm({ title: "", issuedAt: "", expiresAt: "", externalUrl: "", notes: "" });
     } catch (e: any) {
       push({ type: "error", title: "Erro ao salvar registro", message: e?.message || "" });
@@ -776,9 +840,54 @@ export default function App() {
               >
                 Criar conta
               </button>
+
+              <button
+                className="w-full text-center text-sm text-gray-500 hover:text-[#1895BD] mt-2 transition-colors"
+                onClick={() => {
+                  console.log("Abrindo modal de reset password");
+                  setResetPasswordModalOpen(true);
+                }}
+              >
+                Esqueci minha senha
+              </button>
             </div>
           </Card>
         </div>
+
+        {/* Modal Reset Password - FORA do Card de Login */}
+        <Modal open={resetPasswordModalOpen} title="Recuperar Senha" onClose={() => setResetPasswordModalOpen(false)}>
+          <div className="space-y-5">
+            <p className="text-gray-600">
+              Digite seu email cadastrado. Você receberá um link para criar uma nova senha.
+            </p>
+
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">E-mail</p>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-5 py-4 bg-white border border-gray-100 rounded-2xl text-sm focus:ring-2 focus:ring-[#1895BD] outline-none shadow-inner"
+                placeholder="seu@email.com"
+              />
+            </div>
+
+            {authError ? (
+              <div className="bg-red-50 border border-red-100 text-red-600 rounded-2xl p-4 text-sm font-bold">
+                {authError}
+              </div>
+            ) : null}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setResetPasswordModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={doResetPassword} disabled={authLoading || !email}>
+                {authLoading ? "Enviando..." : "Enviar email"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </>
     );
   }
@@ -872,6 +981,41 @@ export default function App() {
             </div>
           </Card>
         </div>
+
+        {/* Modal Reset Password */}
+        <Modal open={resetPasswordModalOpen} title="Recuperar Senha" onClose={() => setResetPasswordModalOpen(false)}>
+          <div className="space-y-5">
+            <p className="text-gray-600">
+              Digite seu email cadastrado. Você receberá um link para criar uma nova senha.
+            </p>
+
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">E-mail</p>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-5 py-4 bg-white border border-gray-100 rounded-2xl text-sm focus:ring-2 focus:ring-[#1895BD] outline-none shadow-inner"
+                placeholder="seu@email.com"
+              />
+            </div>
+
+            {authError ? (
+              <div className="bg-red-50 border border-red-100 text-red-600 rounded-2xl p-4 text-sm font-bold">
+                {authError}
+              </div>
+            ) : null}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setResetPasswordModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={doResetPassword} disabled={authLoading || !email}>
+                {authLoading ? "Enviando..." : "Enviar email"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </>
     );
   }
@@ -930,7 +1074,42 @@ export default function App() {
       <div className="flex flex-col md:flex-row min-h-screen bg-[#F8FAFC]">
         <Sidebar role={role} userName={userDisplayName} view={view} unread={unreadNotifCount} onNav={onNav} onLogout={doLogout} />
 
-        {/* Modals */}
+        {/* Modal Reset Password */}
+        <Modal open={resetPasswordModalOpen} title="Recuperar Senha" onClose={() => setResetPasswordModalOpen(false)}>
+          <div className="space-y-5">
+            <p className="text-gray-600">
+              Digite seu email cadastrado. Você receberá um link para criar uma nova senha.
+            </p>
+
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">E-mail</p>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-5 py-4 bg-white border border-gray-100 rounded-2xl text-sm focus:ring-2 focus:ring-[#1895BD] outline-none shadow-inner"
+                placeholder="seu@email.com"
+              />
+            </div>
+
+            {authError ? (
+              <div className="bg-red-50 border border-red-100 text-red-600 rounded-2xl p-4 text-sm font-bold">
+                {authError}
+              </div>
+            ) : null}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setResetPasswordModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={doResetPassword} disabled={authLoading || !email}>
+                {authLoading ? "Enviando..." : "Enviar email"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* Modal Criar Projeto */}
         <Modal open={projectModalOpen} title="Criar Projeto" onClose={() => setProjectModalOpen(false)}>
           <div className="space-y-5">
             <div>
@@ -954,17 +1133,27 @@ export default function App() {
             </div>
 
             <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Membros do projeto</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Descrição (opcional)</p>
+              <textarea
+                value={projectForm.description}
+                onChange={(e) => setProjectForm((p) => ({ ...p, description: e.target.value }))}
+                className="w-full px-5 py-4 bg-white border border-gray-100 rounded-2xl text-sm focus:ring-2 focus:ring-[#1895BD] outline-none shadow-inner min-h-[100px]"
+                placeholder="Descreva o escopo e objetivos do projeto..."
+              />
+            </div>
 
-             <select
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Membros do projeto</p>
+              <select
                 multiple
-                value={projectEditForm.memberUids}
+                value={projectForm.memberUids}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                   const selected = Array.from(e.currentTarget.selectedOptions).map(
                     (opt: HTMLOptionElement) => opt.value
                   );
-                  setProjectEditForm((p) => ({ ...p, memberUids: selected }));
+                  setProjectForm((p) => ({ ...p, memberUids: selected }));
                 }}
+                className="w-full px-5 py-4 bg-white border border-gray-100 rounded-2xl text-sm focus:ring-2 focus:ring-[#1895BD] outline-none shadow-inner min-h-[120px]"
               >
                 {usersList
                   .filter((u) => u.role === "PRESTADOR" && u.active && u.status === "ACTIVE")
@@ -974,9 +1163,8 @@ export default function App() {
                     </option>
                   ))}
               </select>
-
               <p className="text-[10px] text-gray-400 mt-2">
-                Dica: segure CTRL para selecionar mais de um.
+                Dica: segure CTRL (Windows) ou CMD (Mac) para selecionar mais de um.
               </p>
             </div>
 
@@ -987,6 +1175,7 @@ export default function App() {
           </div>
         </Modal>
 
+        {/* Modal Editar Projeto */}
         <Modal open={projectEditModalOpen} title="Editar Projeto" onClose={() => setProjectEditModalOpen(false)}>
           <div className="space-y-5">
             <div>
@@ -997,6 +1186,7 @@ export default function App() {
                 className="w-full px-5 py-4 bg-white border border-gray-100 rounded-2xl text-sm outline-none shadow-inner"
               />
             </div>
+            
             <div>
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Projeto</p>
               <input
@@ -1007,17 +1197,28 @@ export default function App() {
             </div>
 
             <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Descrição</p>
+              <textarea
+                value={projectEditForm.description}
+                onChange={(e) => setProjectEditForm((p) => ({ ...p, description: e.target.value }))}
+                className="w-full px-5 py-4 bg-white border border-gray-100 rounded-2xl text-sm outline-none shadow-inner min-h-[100px]"
+                placeholder="Descreva o escopo e objetivos do projeto..."
+              />
+            </div>
+
+            <div>
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Membros do projeto</p>
-                 <select
-                    multiple
-                    value={projectEditForm.memberUids}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                      const selected = Array.from(e.currentTarget.selectedOptions).map(
-                        (opt: HTMLOptionElement) => opt.value
-                      );
-                      setProjectEditForm((p) => ({ ...p, memberUids: selected }));
-                    }}
-  >                 
+              <select
+                multiple
+                value={projectEditForm.memberUids}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                  const selected = Array.from(e.currentTarget.selectedOptions).map(
+                    (opt: HTMLOptionElement) => opt.value
+                  );
+                  setProjectEditForm((p) => ({ ...p, memberUids: selected }));
+                }}
+                className="w-full px-5 py-4 bg-white border border-gray-100 rounded-2xl text-sm outline-none shadow-inner min-h-[120px]"
+              >                 
                 {usersList
                   .filter((u) => u.role === "PRESTADOR" && u.active && u.status === "ACTIVE")
                   .map((u) => (
@@ -1026,11 +1227,14 @@ export default function App() {
                     </option>
                   ))}
               </select>
+              <p className="text-[10px] text-gray-400 mt-2">
+                Selecione os membros que você deseja manter. Desmarque para remover.
+              </p>
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" onClick={() => setProjectEditModalOpen(false)}>Cancelar</Button>
-              <Button onClick={saveProjectEdits}>Salvar</Button>
+              <Button onClick={saveProjectEdits}>Salvar Alterações</Button>
             </div>
           </div>
         </Modal>
@@ -1146,13 +1350,58 @@ export default function App() {
                     <p className="text-gray-400">Visão geral e notificações.</p>
                   </div>
                   <div className="flex gap-3">
-                    <Button variant="outline" onClick={markAllNotificationsRead} disabled={unreadNotifCount === 0}>
-                      Marcar notificações como lidas
-                    </Button>
-                    <Button variant="secondary" onClick={() => setProjectModalOpen(true)}>
-                      + Novo projeto
-                    </Button>
+                    {role === "ADMIN" && (
+                      <>
+                        <Button variant="outline" onClick={markAllNotificationsRead} disabled={unreadNotifCount === 0}>
+                          Marcar notificações como lidas
+                        </Button>
+                        <Button variant="secondary" onClick={() => setProjectModalOpen(true)}>
+                          + Novo projeto
+                        </Button>
+                      </>
+                    )}
                   </div>
+                </div>
+
+                {/* KPI Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <Card>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">
+                      Entregas Pendentes
+                    </p>
+                    <p className="text-4xl font-black text-[#1895BD]">
+                      {deliveries.filter(d => d.status === "PENDENTE").length}
+                    </p>
+                  </Card>
+
+                  <Card>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">
+                      Em Revisão
+                    </p>
+                    <p className="text-4xl font-black text-[#75AD4D]">
+                      {deliveries.filter(d => d.status === "REVISAO").length}
+                    </p>
+                  </Card>
+
+                  <Card>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">
+                      Atrasadas
+                    </p>
+                    <p className="text-4xl font-black text-red-500">
+                      {deliveries.filter(d => d.status === "ATRASADO").length}
+                    </p>
+                  </Card>
+
+                  <Card>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">
+                      {role === "ADMIN" ? "Usuários Pendentes" : "Projetos Ativos"}
+                    </p>
+                    <p className="text-4xl font-black text-orange-500">
+                      {role === "ADMIN" 
+                        ? usersList.filter(u => u.status === "PENDING").length
+                        : projects.length}
+                    </p>
+                  </Card>
                 </div>
 
                 <Card>
@@ -1422,6 +1671,37 @@ export default function App() {
                     </div>
                   ) : null}
                 </div>
+
+                {/* Descrição do Projeto */}
+                {selectedProject.description && (
+                  <Card>
+                    <h3 className="text-xl mb-3">Descrição do Projeto</h3>
+                    <p className="text-gray-700 whitespace-pre-wrap">{selectedProject.description}</p>
+                  </Card>
+                )}
+
+                {/* Informações do Projeto */}
+                <Card>
+                  <h3 className="text-xl mb-4">Informações</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Cliente</p>
+                      <p className="font-bold text-gray-800">{selectedProject.client}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Gestor</p>
+                      <p className="font-bold text-gray-800">{selectedProject.manager}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Status</p>
+                      <p className="font-bold text-gray-800">{selectedProject.status.replace("_", " ")}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Membros</p>
+                      <p className="font-bold text-gray-800">{selectedProject.memberUids.length} prestador(es)</p>
+                    </div>
+                  </div>
+                </Card>
 
                 <Card>
                   <h3 className="text-xl mb-4">Entregas do projeto</h3>

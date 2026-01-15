@@ -18,6 +18,17 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        rollupOptions: {
+          external: ['@tailwindcss/forms', '@tailwindcss/typography']
+        }
       }
     };
 });
+
+// Cache clearing instructions:
+// Chrome: Ctrl+Shift+Delete
+// - Escolha "Últimos 7 dias"
+// - Marque "Cookies" e "Cache"
+// - Limpar dados

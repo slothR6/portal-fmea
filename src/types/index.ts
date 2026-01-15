@@ -90,15 +90,12 @@ export interface Project {
   id: string;
   client: string;
   name: string;
-
+  description?: string; // NOVO CAMPO
   manager: string;
-  managerUid?: string;
-
-  memberUids?: string[];
-
-  status: "EM_ANDAMENTO" | "CONCLUIDO" | "CANCELADO";
+  managerUid: string;
+  memberUids: string[];
+  status: "EM_ANDAMENTO" | "CONCLUIDO" | "PAUSADO";
   completionRate: number;
-
   createdAt: number;
   updatedAt?: number;
   deletedAt?: number;
